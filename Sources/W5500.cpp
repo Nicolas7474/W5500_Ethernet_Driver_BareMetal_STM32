@@ -1,8 +1,11 @@
+/*	The current W5500 API uses static member functions,
+ * therefore main.c can call W5500::Init() directly and doesn't need to instantiate a W5500 object. 	*/
+
 #include "W5500.hpp"
 #include "myConfig.h"
 
 #include <algorithm>
-#include "../Inc/W5500_registers.hpp"
+#include "W5500_registers.hpp"
 
 
 extern SpiDriver spi3;
@@ -10,6 +13,9 @@ extern SpiDriver spi3;
 
 namespace
 {
+	/* File-local implementation functions: An unnamed namespace is a modern C++ way of getting internal/file-local linkage
+	without having to put static in front of every helper. Nobody outside this file can use these names. */
+
     constexpr uint8_t MAX_SOCKETS = 8;
 
     constexpr uint32_t W5500_RESET_TIME_MS = 50;
@@ -28,28 +34,28 @@ namespace
     // ---------------------------------------------------------
 
     W5500::BufferSize txBufferSize[MAX_SOCKETS]
-    {
-        W5500::BufferSize::KB2,
-        W5500::BufferSize::KB2,
-        W5500::BufferSize::KB2,
-        W5500::BufferSize::KB2,
-        W5500::BufferSize::KB2,
-        W5500::BufferSize::KB2,
-        W5500::BufferSize::KB2,
-        W5500::BufferSize::KB2
-    };
+       {
+           W5500::BufferSize::KB2,
+           W5500::BufferSize::KB2,
+           W5500::BufferSize::KB2,
+           W5500::BufferSize::KB2,
+           W5500::BufferSize::KB2,
+           W5500::BufferSize::KB2,
+           W5500::BufferSize::KB2,
+           W5500::BufferSize::KB2
+       };
 
-    W5500::BufferSize rxBufferSize[MAX_SOCKETS]
-    {
-        W5500::BufferSize::KB2,
-        W5500::BufferSize::KB2,
-        W5500::BufferSize::KB2,
-        W5500::BufferSize::KB2,
-        W5500::BufferSize::KB2,
-        W5500::BufferSize::KB2,
-        W5500::BufferSize::KB2,
-        W5500::BufferSize::KB2
-    };
+       W5500::BufferSize rxBufferSize[MAX_SOCKETS]
+       {
+           W5500::BufferSize::KB2,
+           W5500::BufferSize::KB2,
+           W5500::BufferSize::KB2,
+           W5500::BufferSize::KB2,
+           W5500::BufferSize::KB2,
+           W5500::BufferSize::KB2,
+           W5500::BufferSize::KB2,
+           W5500::BufferSize::KB2
+       };
 
     // =========================================================
     // Chip Select
@@ -68,37 +74,30 @@ namespace
     // =========================================================
     // W5500 SPI control byte
     //
-    // BSB[4:0] | R/W | OM[1:0]
+    // BSB[7:3] | R/W | OM[1:0]
     //
     // OM = 00 -> Variable length data mode
     // =========================================================
 
-    constexpr uint8_t MakeControlByte(
-        uint8_t block,
-        bool write)
+    constexpr uint8_t MakeControlByte(uint8_t block, bool write)
     {
-        return static_cast<uint8_t>(
-            (block << 3) |
-            (write ? 0x04U : 0x00U));
+        return static_cast<uint8_t>((block << 3) | (write ? 0x04U : 0x00U)); // 0x04U = RWB on bit 2
     }
 
     // =========================================================
     // Buffer size conversion
     // =========================================================
 
-    constexpr uint16_t BufferBytes(
-        W5500::BufferSize size)
+    constexpr uint16_t BufferBytes(W5500::BufferSize size)
     {
-        return static_cast<uint16_t>(
-            static_cast<uint8_t>(size) * 1024U);
+        return static_cast<uint16_t>(static_cast<uint8_t>(size) * 1024U);
     }
 
     // =========================================================
     // Validate socket number
     // =========================================================
 
-    constexpr bool ValidSocket(
-        uint8_t socket)
+    constexpr bool ValidSocket(uint8_t socket)
     {
         return socket < MAX_SOCKETS;
     }
@@ -126,31 +125,20 @@ namespace
     // CS remains LOW for the complete transaction.
     // =========================================================
 
-    BareM_Status Write(
-        uint16_t address,
-        uint8_t block,
-        std::span<const uint8_t> data)
+    BareM_Status Write(uint16_t address, uint8_t block, std::span<const uint8_t> data)
     {
         if (data.empty())
             return BareM_Status::ERROR;
 
 
-        const uint8_t header[3]
-        {
-            static_cast<uint8_t>(address >> 8),
-            static_cast<uint8_t>(address),
-            MakeControlByte(block, true)
-        };
+        const uint8_t header[3] { static_cast<uint8_t>(address >> 8), static_cast<uint8_t>(address), MakeControlByte(block, true) };
 
 
         CS_Low();
 
 
         // Small header: polling avoids SPI RX overrun.
-        auto status =
-            spi3.Transmit(
-                std::span<const uint8_t>(header),
-                10);
+        auto status = spi3.Transmit(std::span<const uint8_t>(header), 10);
 
         if (status != BareM_Status::OK)
         {
@@ -160,8 +148,7 @@ namespace
 
 
         // Large payload: DMA.
-        status =
-            spi3.Transmit_DMA(data);
+        status = spi3.Transmit_DMA(data);
 
         if (status != BareM_Status::OK)
         {
@@ -188,31 +175,20 @@ namespace
     // CS remains LOW for the complete transaction.
     // =========================================================
 
-    BareM_Status Read(
-        uint16_t address,
-        uint8_t block,
-        std::span<uint8_t> data)
+    BareM_Status Read(uint16_t address, uint8_t block, std::span<uint8_t> data)
     {
         if (data.empty())
             return BareM_Status::ERROR;
 
 
-        const uint8_t header[3]
-        {
-            static_cast<uint8_t>(address >> 8),
-            static_cast<uint8_t>(address),
-            MakeControlByte(block, false)
-        };
+        const uint8_t header[3] { static_cast<uint8_t>(address >> 8), static_cast<uint8_t>(address), MakeControlByte(block, false) };
 
 
         CS_Low();
 
 
         // Small header: polling drains the dummy RX bytes.
-        auto status =
-            spi3.Transmit(
-                std::span<const uint8_t>(header),
-                10);
+        auto status = spi3.Transmit(std::span<const uint8_t>(header), 10);
 
         if (status != BareM_Status::OK)
         {
@@ -222,8 +198,7 @@ namespace
 
 
         // Payload: DMA generates the SPI clocks and receives data.
-        status =
-            spi3.Receive_DMA(data);
+        status = spi3.Receive_DMA(data);
 
         if (status != BareM_Status::OK)
         {
@@ -247,30 +222,15 @@ namespace
     // small transaction for which DMA is unnecessary.
     // =========================================================
 
-    BareM_Status Read8(
-        uint16_t address,
-        uint8_t block,
-        uint8_t& value)
+    BareM_Status Read8(uint16_t address, uint8_t block, uint8_t& value)
     {
-        const uint8_t tx[4]
-        {
-            static_cast<uint8_t>(address >> 8),
-            static_cast<uint8_t>(address),
-            MakeControlByte(block, false),
-            0x00
-        };
+        const uint8_t tx[4] { static_cast<uint8_t>(address >> 8), static_cast<uint8_t>(address), MakeControlByte(block, false), 0x00 };
 
         uint8_t rx[4]{};
 
-
         CS_Low();
 
-
-        auto status =
-            spi3.TransmitReceive(
-                std::span<const uint8_t>(tx),
-                std::span<uint8_t>(rx),
-                10);
+        auto status = spi3.TransmitReceive(std::span<const uint8_t>(tx), std::span<uint8_t>(rx), 10);
 
         if (status != BareM_Status::OK)
         {
@@ -278,12 +238,9 @@ namespace
             return status;
         }
 
-
         CS_High();
 
-
-        // First three received bytes correspond to the header.
-        value = rx[3];
+        value = rx[3]; // First three received bytes correspond to the header.
 
         return BareM_Status::OK;
     }
@@ -293,15 +250,9 @@ namespace
     // 8-bit WRITE
     // =========================================================
 
-    BareM_Status Write8(
-        uint16_t address,
-        uint8_t block,
-        uint8_t value)
+    BareM_Status Write8(uint16_t address, uint8_t block, uint8_t value)
     {
-        return Write(
-            address,
-            block,
-            std::span<const uint8_t>(&value, 1));
+        return Write(address, block, std::span<const uint8_t>(&value, 1));
     }
 
 
@@ -309,28 +260,18 @@ namespace
     // 16-bit READ
     // =========================================================
 
-    BareM_Status Read16(
-        uint16_t address,
-        uint8_t block,
-        uint16_t& value)
+    BareM_Status Read16(uint16_t address, uint8_t block, uint16_t& value)
     {
         uint8_t data[2]{};
 
 
-        auto status =
-            Read(
-                address,
-                block,
-                std::span<uint8_t>(data));
+        auto status = Read(address, block, std::span<uint8_t>(data));
 
         if (status != BareM_Status::OK)
             return status;
 
 
-        value =
-            static_cast<uint16_t>(
-                (static_cast<uint16_t>(data[0]) << 8) |
-                 static_cast<uint16_t>(data[1]));
+        value = static_cast<uint16_t>((static_cast<uint16_t>(data[0]) << 8) | static_cast<uint16_t>(data[1]));
 
 
         return BareM_Status::OK;
@@ -341,22 +282,12 @@ namespace
     // 16-bit WRITE
     // =========================================================
 
-    BareM_Status Write16(
-        uint16_t address,
-        uint8_t block,
-        uint16_t value)
+    BareM_Status Write16(uint16_t address, uint8_t block, uint16_t value)
     {
-        const uint8_t data[2]
-        {
-            static_cast<uint8_t>(value >> 8),
-            static_cast<uint8_t>(value)
-        };
+        const uint8_t data[2] { static_cast<uint8_t>(value >> 8), static_cast<uint8_t>(value) };
 
 
-        return Write(
-            address,
-            block,
-            std::span<const uint8_t>(data));
+        return Write(address, block, std::span<const uint8_t>(data));
     }
 
 
@@ -364,51 +295,27 @@ namespace
     // Socket register helpers
     // =========================================================
 
-    BareM_Status SocketRead8(
-        uint8_t socket,
-        uint16_t address,
-        uint8_t& value)
+    BareM_Status SocketRead8(uint8_t socket, uint16_t address, uint8_t& value)
     {
-        return Read8(
-            address,
-            W5500_Reg::SocketRegBlock(socket),
-            value);
+        return Read8(address, W5500_Reg::SocketRegBlock(socket), value);
     }
 
 
-    BareM_Status SocketWrite8(
-        uint8_t socket,
-        uint16_t address,
-        uint8_t value)
+    BareM_Status SocketWrite8(uint8_t socket, uint16_t address, uint8_t value)
     {
-        return Write8(
-            address,
-            W5500_Reg::SocketRegBlock(socket),
-            value);
+        return Write8(address, W5500_Reg::SocketRegBlock(socket), value);
     }
 
 
-    BareM_Status SocketRead16(
-        uint8_t socket,
-        uint16_t address,
-        uint16_t& value)
+    BareM_Status SocketRead16(uint8_t socket, uint16_t address, uint16_t& value)
     {
-        return Read16(
-            address,
-            W5500_Reg::SocketRegBlock(socket),
-            value);
+        return Read16(address, W5500_Reg::SocketRegBlock(socket), value);
     }
 
 
-    BareM_Status SocketWrite16(
-        uint8_t socket,
-        uint16_t address,
-        uint16_t value)
+    BareM_Status SocketWrite16(uint8_t socket, uint16_t address, uint16_t value)
     {
-        return Write16(
-            address,
-            W5500_Reg::SocketRegBlock(socket),
-            value);
+        return Write16(address, W5500_Reg::SocketRegBlock(socket), value);
     }
 
 
@@ -419,9 +326,7 @@ namespace
     // register may change while the two bytes are read.
     // =========================================================
 
-    BareM_Status GetStableTxFreeSize(
-        uint8_t socket,
-        uint16_t& size)
+    BareM_Status GetStableTxFreeSize(uint8_t socket, uint16_t& size)
     {
         uint16_t value1;
         uint16_t value2;
@@ -429,21 +334,13 @@ namespace
 
         do
         {
-            auto status =
-                SocketRead16(
-                    socket,
-                    W5500_Reg::Sn_TX_FSR0,
-                    value1);
+            auto status = SocketRead16(socket, W5500_Reg::Sn_TX_FSR0, value1);
 
             if (status != BareM_Status::OK)
                 return status;
 
 
-            status =
-                SocketRead16(
-                    socket,
-                    W5500_Reg::Sn_TX_FSR0,
-                    value2);
+            status = SocketRead16(socket, W5500_Reg::Sn_TX_FSR0, value2);
 
             if (status != BareM_Status::OK)
                 return status;
@@ -461,29 +358,19 @@ namespace
     // Stable Sn_RX_RSR read
     // =========================================================
 
-    BareM_Status GetStableRxReceivedSize(
-        uint8_t socket,
-        uint16_t& size)
+    BareM_Status GetStableRxReceivedSize(uint8_t socket, uint16_t& size)
     {
         uint16_t value1;
         uint16_t value2;
 
         do
         {
-            auto status =
-                SocketRead16(
-                    socket,
-                    W5500_Reg::Sn_RX_RSR0,
-                    value1);
+            auto status = SocketRead16(socket, W5500_Reg::Sn_RX_RSR0, value1);
 
             if (status != BareM_Status::OK)
                 return status;
 
-            status =
-                SocketRead16(
-                    socket,
-                    W5500_Reg::Sn_RX_RSR0,
-                    value2);
+            status = SocketRead16(socket, W5500_Reg::Sn_RX_RSR0, value2);
 
             if (status != BareM_Status::OK)
                 return status;
@@ -500,15 +387,9 @@ namespace
     // Socket command
     // =========================================================
 
-    BareM_Status SocketCommand(
-        uint8_t socket,
-        uint8_t command)
+    BareM_Status SocketCommand(uint8_t socket, uint8_t command)
     {
-        auto status =
-            SocketWrite8(
-                socket,
-                W5500_Reg::Sn_CR,
-                command);
+        auto status = SocketWrite8(socket, W5500_Reg::Sn_CR, command);
 
         if (status != BareM_Status::OK)
             return status;
@@ -519,11 +400,7 @@ namespace
 
         do
         {
-            status =
-                SocketRead8(
-                    socket,
-                    W5500_Reg::Sn_CR,
-                    commandValue);
+            status = SocketRead8(socket, W5500_Reg::Sn_CR, commandValue);
 
             if (status != BareM_Status::OK)
                 return status;
@@ -542,25 +419,15 @@ namespace
     // Socket buffer configuration
     // =========================================================
 
-    BareM_Status ConfigureSocketBuffer(
-        uint8_t socket)
+    BareM_Status ConfigureSocketBuffer(uint8_t socket)
     {
-        auto status =
-            SocketWrite8(
-                socket,
-                W5500_Reg::Sn_TXBUF_SIZE,
-                static_cast<uint8_t>(
-                    txBufferSize[socket]));
+        auto status = SocketWrite8(socket, W5500_Reg::Sn_TXBUF_SIZE, static_cast<uint8_t>(txBufferSize[socket]));
 
         if (status != BareM_Status::OK)
             return status;
 
 
-        return SocketWrite8(
-            socket,
-            W5500_Reg::Sn_RXBUF_SIZE,
-            static_cast<uint8_t>(
-                rxBufferSize[socket]));
+        return SocketWrite8(socket, W5500_Reg::Sn_RXBUF_SIZE, static_cast<uint8_t>(rxBufferSize[socket]));
     }
 
 
@@ -576,9 +443,7 @@ namespace
         uint16_t rxTotal = 0;
 
 
-        for (uint8_t socket = 0;
-             socket < MAX_SOCKETS;
-             ++socket)
+        for (uint8_t socket = 0; socket < MAX_SOCKETS; ++socket)
         {
             txTotal += BufferBytes(txBufferSize[socket]);
             rxTotal += BufferBytes(rxBufferSize[socket]);
@@ -589,7 +454,7 @@ namespace
             (txTotal <= 16384U) &&
             (rxTotal <= 16384U);
     }
-}
+}						// --- End of namespace ---
 
 
 // ============================================================================
@@ -600,7 +465,6 @@ BareM_Status W5500::Init()
 {
     // ---------------------------------------------------------
     // Release W5500 hardware reset.
-    //
     // Spi3_LowLevelInit() deliberately leaves PD1 LOW.
     // ---------------------------------------------------------
     uint32_t timeout = GetSysTick() + W5500_RESET_TIME_MS;
@@ -615,42 +479,32 @@ BareM_Status W5500::Init()
     timeout = GetSysTick() + W5500_RESET_TIME_MS;
     while (GetSysTick() < timeout);
 
-
     // ---------------------------------------------------------
     // First hardware sanity check: VERSIONR
     // ---------------------------------------------------------
 
     uint8_t version = 0;
 
-
-    auto status =
-        ReadVersion(version);
+    auto status = ReadVersion(version);
 
     if (status != BareM_Status::OK)
         return status;
-
 
     // W5500 VERSIONR reset value = 0x04
     if (version != 0x04)
         return BareM_Status::ERROR;
 
-
     // ---------------------------------------------------------
     // Configure default 2 KB TX + 2 KB RX on every socket.
     // ---------------------------------------------------------
 
-    for (uint8_t socket = 0;
-         socket < MAX_SOCKETS;
-         ++socket)
+    for (uint8_t socket = 0; socket < MAX_SOCKETS; ++socket)
     {
-        status =
-            ConfigureSocketBuffer(socket);
+        status = ConfigureSocketBuffer(socket);
 
         if (status != BareM_Status::OK)
             return status;
     }
-
-
     return BareM_Status::OK;
 }
 
@@ -659,43 +513,27 @@ BareM_Status W5500::Init()
 // NETWORK CONFIGURATION
 // ============================================================================
 
-BareM_Status W5500::SetMacAddress(
-    std::span<const uint8_t, 6> mac)
+BareM_Status W5500::SetMacAddress(std::span<const uint8_t, 6> mac)
 {
-    return Write(
-        W5500_Reg::SHAR0,
-        W5500_Reg::Block::COMMON,
-        mac);
+    return Write(W5500_Reg::SHAR0, W5500_Reg::Block::COMMON, mac);
 }
 
 
-BareM_Status W5500::SetIPAddress(
-    std::span<const uint8_t, 4> ip)
+BareM_Status W5500::SetIPAddress(std::span<const uint8_t, 4> ip)
 {
-    return Write(
-        W5500_Reg::SIPR0,
-        W5500_Reg::Block::COMMON,
-        ip);
+    return Write(W5500_Reg::SIPR0, W5500_Reg::Block::COMMON, ip);
 }
 
 
-BareM_Status W5500::SetSubnetMask(
-    std::span<const uint8_t, 4> mask)
+BareM_Status W5500::SetSubnetMask(std::span<const uint8_t, 4> mask)
 {
-    return Write(
-        W5500_Reg::SUBR0,
-        W5500_Reg::Block::COMMON,
-        mask);
+    return Write(W5500_Reg::SUBR0, W5500_Reg::Block::COMMON, mask);
 }
 
 
-BareM_Status W5500::SetGateway(
-    std::span<const uint8_t, 4> gateway)
+BareM_Status W5500::SetGateway(std::span<const uint8_t, 4> gateway)
 {
-    return Write(
-        W5500_Reg::GAR0,
-        W5500_Reg::Block::COMMON,
-        gateway);
+    return Write(W5500_Reg::GAR0, W5500_Reg::Block::COMMON, gateway);
 }
 
 
@@ -703,10 +541,7 @@ BareM_Status W5500::SetGateway(
 // SOCKET BUFFER SIZE
 // ============================================================================
 
-BareM_Status W5500::SetSocketBufferSize(
-    uint8_t socket,
-    BufferSize txSize,
-    BufferSize rxSize)
+BareM_Status W5500::SetSocketBufferSize(uint8_t socket, BufferSize txSize, BufferSize rxSize)
 {
     if (!ValidSocket(socket))
         return BareM_Status::ERROR;
@@ -738,13 +573,9 @@ BareM_Status W5500::SetSocketBufferSize(
 // DIAGNOSTIC
 // ============================================================================
 
-BareM_Status W5500::ReadVersion(
-    uint8_t& version)
+BareM_Status W5500::ReadVersion(uint8_t& version)
 {
-    return Read8(
-        W5500_Reg::VERSIONR,
-        W5500_Reg::Block::COMMON,
-        version);
+    return Read8(W5500_Reg::VERSIONR, W5500_Reg::Block::COMMON, version);
 }
 
 
@@ -752,38 +583,25 @@ BareM_Status W5500::ReadVersion(
 // SOCKET OPEN
 // ============================================================================
 
-BareM_Status W5500::SocketOpen(
-    uint8_t socket,
-    Protocol protocol,
-    uint16_t port)
+BareM_Status W5500::SocketOpen(uint8_t socket, Protocol protocol, uint16_t port)
 {
     if (!ValidSocket(socket))
         return BareM_Status::ERROR;
 
 
-    auto status =
-        SocketWrite8(
-            socket,
-            W5500_Reg::Sn_MR,
-            static_cast<uint8_t>(protocol));
+    auto status = SocketWrite8(socket, W5500_Reg::Sn_MR, static_cast<uint8_t>(protocol));
 
     if (status != BareM_Status::OK)
         return status;
 
 
-    status =
-        SocketWrite16(
-            socket,
-            W5500_Reg::Sn_PORT0,
-            port);
+    status = SocketWrite16(socket, W5500_Reg::Sn_PORT0, port);
 
     if (status != BareM_Status::OK)
         return status;
 
 
-    return SocketCommand(
-        socket,
-        W5500_Reg::Sn_CR_Command::OPEN);
+    return SocketCommand(socket, W5500_Reg::Sn_CR_Command::OPEN);
 }
 
 
@@ -791,16 +609,13 @@ BareM_Status W5500::SocketOpen(
 // SOCKET CLOSE
 // ============================================================================
 
-BareM_Status W5500::SocketClose(
-    uint8_t socket)
+BareM_Status W5500::SocketClose(uint8_t socket)
 {
     if (!ValidSocket(socket))
         return BareM_Status::ERROR;
 
 
-    return SocketCommand(
-        socket,
-        W5500_Reg::Sn_CR_Command::CLOSE);
+    return SocketCommand(socket, W5500_Reg::Sn_CR_Command::CLOSE);
 }
 
 
@@ -808,12 +623,9 @@ BareM_Status W5500::SocketClose(
 // SOCKET SEND
 // ============================================================================
 
-BareM_Status W5500::SocketSend(
-    uint8_t socket,
-    std::span<const uint8_t> data)
+BareM_Status W5500::SocketSend(uint8_t socket, std::span<const uint8_t> data)
 {
-    if (!ValidSocket(socket) ||
-        data.empty())
+    if (!ValidSocket(socket) || data.empty())
         return BareM_Status::ERROR;
 
 
@@ -824,10 +636,7 @@ BareM_Status W5500::SocketSend(
     uint16_t freeSize;
 
 
-    auto status =
-        GetStableTxFreeSize(
-            socket,
-            freeSize);
+    auto status = GetStableTxFreeSize(socket, freeSize);
 
     if (status != BareM_Status::OK)
         return status;
@@ -844,11 +653,7 @@ BareM_Status W5500::SocketSend(
     uint16_t writePointer;
 
 
-    status =
-        SocketRead16(
-            socket,
-            W5500_Reg::Sn_TX_WR0,
-            writePointer);
+    status = SocketRead16(socket, W5500_Reg::Sn_TX_WR0, writePointer);
 
     if (status != BareM_Status::OK)
         return status;
@@ -864,11 +669,7 @@ BareM_Status W5500::SocketSend(
     // socket-buffer addressing internally.
     // ---------------------------------------------------------
 
-    status =
-        Write(
-            writePointer,
-            W5500_Reg::SocketTxBlock(socket),
-            data);
+    status = Write(writePointer, W5500_Reg::SocketTxBlock(socket), data);
 
     if (status != BareM_Status::OK)
         return status;
@@ -879,16 +680,10 @@ BareM_Status W5500::SocketSend(
     // 16 bits when the pointer crosses 0xFFFF.
     // ---------------------------------------------------------
 
-    writePointer =
-        static_cast<uint16_t>(
-            writePointer + data.size());
+    writePointer = static_cast<uint16_t>(writePointer + data.size());
 
 
-    status =
-        SocketWrite16(
-            socket,
-            W5500_Reg::Sn_TX_WR0,
-            writePointer);
+    status = SocketWrite16(socket, W5500_Reg::Sn_TX_WR0, writePointer);
 
     if (status != BareM_Status::OK)
         return status;
@@ -898,9 +693,7 @@ BareM_Status W5500::SocketSend(
     // Tell W5500 to transmit the data.
     // ---------------------------------------------------------
 
-    return SocketCommand(
-        socket,
-        W5500_Reg::Sn_CR_Command::SEND);
+    return SocketCommand(socket, W5500_Reg::Sn_CR_Command::SEND);
 }
 
 
@@ -908,12 +701,9 @@ BareM_Status W5500::SocketSend(
 // SOCKET RECEIVE
 // ============================================================================
 
-BareM_Status W5500::SocketReceive(
-    uint8_t socket,
-    std::span<uint8_t> data)
+BareM_Status W5500::SocketReceive(uint8_t socket, std::span<uint8_t> data)
 {
-    if (!ValidSocket(socket) ||
-        data.empty())
+    if (!ValidSocket(socket) || data.empty())
         return BareM_Status::ERROR;
 
 
@@ -924,10 +714,7 @@ BareM_Status W5500::SocketReceive(
     uint16_t receivedSize;
 
 
-    auto status =
-        GetStableRxReceivedSize(
-            socket,
-            receivedSize);
+    auto status = GetStableRxReceivedSize(socket, receivedSize);
 
     if (status != BareM_Status::OK)
         return status;
@@ -944,11 +731,7 @@ BareM_Status W5500::SocketReceive(
     uint16_t readPointer;
 
 
-    status =
-        SocketRead16(
-            socket,
-            W5500_Reg::Sn_RX_RD0,
-            readPointer);
+    status = SocketRead16(socket, W5500_Reg::Sn_RX_RD0, readPointer);
 
     if (status != BareM_Status::OK)
         return status;
@@ -960,11 +743,7 @@ BareM_Status W5500::SocketReceive(
     // No software buffer splitting.
     // ---------------------------------------------------------
 
-    status =
-        Read(
-            readPointer,
-            W5500_Reg::SocketRxBlock(socket),
-            data);
+    status = Read(readPointer, W5500_Reg::SocketRxBlock(socket), data);
 
     if (status != BareM_Status::OK)
         return status;
@@ -974,16 +753,10 @@ BareM_Status W5500::SocketReceive(
     // Advance RX read pointer.
     // ---------------------------------------------------------
 
-    readPointer =
-        static_cast<uint16_t>(
-            readPointer + data.size());
+    readPointer = static_cast<uint16_t>(readPointer + data.size());
 
 
-    status =
-        SocketWrite16(
-            socket,
-            W5500_Reg::Sn_RX_RD0,
-            readPointer);
+    status = SocketWrite16(socket, W5500_Reg::Sn_RX_RD0, readPointer);
 
     if (status != BareM_Status::OK)
         return status;
@@ -993,7 +766,5 @@ BareM_Status W5500::SocketReceive(
     // Notify W5500 that the data has been consumed.
     // ---------------------------------------------------------
 
-    return SocketCommand(
-        socket,
-        W5500_Reg::Sn_CR_Command::RECV);
+    return SocketCommand(socket, W5500_Reg::Sn_CR_Command::RECV);
 }
