@@ -69,7 +69,6 @@ public:
     BareM_Status Receive(std::span<uint8_t> rxData, uint32_t timeoutMs);
     BareM_Status Receive_MainBody(std::span<uint8_t> rxData, uint32_t timeoutMs);
     BareM_Status TransmitReceive(std::span<const uint8_t> txData, std::span<uint8_t> rxData, uint32_t timeoutMs);
-    BareM_Status TransmitReceive_MainBody(std::span<const uint8_t> txData, std::span<uint8_t> rxData, uint32_t timeoutMs);
     // DMA functions declarations
     BareM_Status Receive_DMA(std::span<uint8_t> rxData);
     BareM_Status Transmit_DMA(std::span<const uint8_t> txdata);
@@ -79,6 +78,8 @@ public:
     static void CS1_High() { GPIOA->BSRR = GPIO_BSRR_BS15; } // Enforces the SpiDriver:: or spi. prefix scoping
     static void CS2_Low()  { GPIOC->BSRR = GPIO_BSRR_BR13; } // The function becomes a regular, global function
     static void CS2_High() { GPIOC->BSRR = GPIO_BSRR_BS13; }
+    static void CS_FRAM_Low()  { GPIOE->BSRR = GPIO_BSRR_BR11; }
+    static void CS_FRAM_High() { GPIOE->BSRR = GPIO_BSRR_BS11; }
 
     SpiState GetState() const { return m_state; }
 
@@ -302,7 +303,9 @@ BareM_Status SpiDriver::Transmit(std::span<const uint8_t> txData, uint32_t timeo
 	// Fast path kick: Compiles to an ultra-fast conditional or direct store
 	if (__builtin_expect(m_state == SpiState::READY, 1)) {
 		if (!txData.empty()) {				// Kick the hardware immediately (the first byte)
+
 			config.spi->DR = txData[0]; 	// Reduce drastically the delay between falling edge of CS and that of CLK (780ns -> 420ns)
+
 		} else {
 			return BareM_Status::ERROR;
 		}
@@ -326,34 +329,10 @@ BareM_Status SpiDriver::Transmit(std::span<const uint8_t> txData, uint32_t timeo
 }
 
 
-__attribute__((always_inline)) inline
-BareM_Status SpiDriver::TransmitReceive(std::span<const uint8_t> txData, std::span<uint8_t> rxData, uint32_t timeoutMs) {
-	// Clean, optimized entry user point - fast safety check
-	if (__builtin_expect(m_state == SpiState::READY, 1)) {
-		// FAST-PATH KICK: Compiles to an ultra-fast conditional or direct store
-		if (!txData.empty()) {				// Kick the hardware immediately (the first byte)
-			config.spi->DR = txData[0]; 	// Reduce drastically the delay between falling edge of CS and that of CLK (780ns -> 420ns)
-		} else {
-			config.spi->DR = 0x00; // Safe dummy kick for pure Receive operations
-		}
-	} else {
-        // FALLBACK: The programmer made a mistake or a background task is running
-		const uint32_t startTick = GetSysTick();
-        while (m_state != SpiState::READY) {
-        	if ((GetSysTick() - startTick) >= timeoutMs) {
-                return BareM_Status::TIMEOUT;
-            }
-        }
-        if (!txData.empty()) {
-            config.spi->DR = txData[0];
-        } else {
-            config.spi->DR = 0x00;
-        }
-    }
-    return TransmitReceive_MainBody(txData, rxData, timeoutMs);  // Hand off the heavy lifting to the single, shared function in Flash
-}
+
 
 // extern SpiDriver spi1; // declaration of global instance of an SpiDriver object named spi1
 extern SpiDriver spi3; // declaration of global instance of an SpiDriver object named spi3
+extern SpiDriver spi4; // declaration of global instance for SPI4 (FM25CL64B)
 
 

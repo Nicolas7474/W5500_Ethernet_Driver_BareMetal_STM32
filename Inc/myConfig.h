@@ -5,7 +5,7 @@
 extern "C" {
 #endif
 
-
+void SysTick_Handler(void);
 void activateFPU(void);
 void SysClockConfig (void);
 void GPIO_Config(void);

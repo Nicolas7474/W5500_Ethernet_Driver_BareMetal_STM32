@@ -100,6 +100,8 @@ endif()
 add_compile_definitions (${PROJECT_DEFINES})
 include_directories (${PROJECT_INCLUDES})
 
+target_compile_options(W5500_Driver_BareMetal_STM32 PRIVATE -O2)
+
 set (CMAKE_EXECUTABLE_SUFFIX ".elf")
 set (CMAKE_STATIC_LIBRARY_SUFFIX ".a")
 set (CMAKE_C_FLAGS "${MCPU} -std=gnu11 ${MFPU} ${MFLOAT_ABI} ${RUNTIME_LIBRARY} -mthumb -Wall")

@@ -128,15 +128,11 @@ namespace
     BareM_Status Write(uint16_t address, uint8_t block, std::span<const uint8_t> data)
     {
         if (data.empty())
-            return BareM_Status::ERROR;
-
+        	return BareM_Status::ERROR;
 
         const uint8_t header[3] { static_cast<uint8_t>(address >> 8), static_cast<uint8_t>(address), MakeControlByte(block, true) };
 
-
         CS_Low();
-
-
         // Small header: polling avoids SPI RX overrun.
         auto status = spi3.Transmit(std::span<const uint8_t>(header), 10);
 
@@ -146,25 +142,25 @@ namespace
             return status;
         }
 
-
-        // Large payload: DMA.
-        status = spi3.Transmit_DMA(data);
-
-        if (status != BareM_Status::OK)
+        if (data.size() < 8)
         {
-            CS_High();
-            return status;
+        	// Small payload: polling is faster if byte length < 20
+        	// Nonetheless we choose 8 bytes max to avoid blocking the CPU for too long
+        	status = spi3.Transmit(data, 10);
         }
+        else
+        {
+        	// DMA: slightly higher latency for small transfers up to 20 bytes,
+        	// but significantly reduces CPU occupation.
+        	status = spi3.Transmit_DMA(data);
 
-
-        // DMA is non-blocking.
-        status = WaitForSpiReady(SPI_WAIT_TIMEOUT_MS);
-
+        	if (status == BareM_Status::OK)
+        		status = WaitForSpiReady(SPI_WAIT_TIMEOUT_MS); // only for DMA
+        }
         CS_High();
 
         return status;
     }
-
 
     // =========================================================
     // Generic READ
@@ -255,7 +251,6 @@ namespace
         return Write(address, block, std::span<const uint8_t>(&value, 1));
     }
 
-
     // =========================================================
     // 16-bit READ
     // =========================================================
@@ -293,6 +288,8 @@ namespace
 
     // =========================================================
     // Socket register helpers
+    // 8-bit registers: Such as Socket Command (Sn_CR), Socket Interrupt (Sn_IR), and Status (Sn_SR)
+    // 16-bit registers: Such as Source Port (Sn_PORT), Maximum Segment Size (Sn_MSS), or pointer/buffer registers
     // =========================================================
 
     BareM_Status SocketRead8(uint8_t socket, uint16_t address, uint8_t& value)
@@ -300,18 +297,15 @@ namespace
         return Read8(address, W5500_Reg::SocketRegBlock(socket), value);
     }
 
-
     BareM_Status SocketWrite8(uint8_t socket, uint16_t address, uint8_t value)
     {
         return Write8(address, W5500_Reg::SocketRegBlock(socket), value);
     }
 
-
     BareM_Status SocketRead16(uint8_t socket, uint16_t address, uint16_t& value)
     {
         return Read16(address, W5500_Reg::SocketRegBlock(socket), value);
     }
-
 
     BareM_Status SocketWrite16(uint8_t socket, uint16_t address, uint16_t value)
     {
@@ -461,14 +455,16 @@ namespace
 // INITIALIZATION
 // ============================================================================
 
+
 BareM_Status W5500::Init()
 {
     // ---------------------------------------------------------
     // Release W5500 hardware reset.
     // Spi3_LowLevelInit() deliberately leaves PD1 LOW.
     // ---------------------------------------------------------
-    uint32_t timeout = GetSysTick() + W5500_RESET_TIME_MS;
-    while (GetSysTick() < timeout); // Holds reset active for 50ms
+
+    uint32_t start = GetSysTick();
+    while ((GetSysTick() - start) < W5500_RESET_TIME_MS);
 
     GPIOD->BSRR = RESET_HIGH;
 
@@ -476,21 +472,21 @@ BareM_Status W5500::Init()
     // Wait for W5500 internal startup / PLL.
     // ---------------------------------------------------------
 
-    timeout = GetSysTick() + W5500_RESET_TIME_MS;
-    while (GetSysTick() < timeout);
+    start = GetSysTick();
+    while ((GetSysTick() - start) < W5500_RESET_TIME_MS);
 
     // ---------------------------------------------------------
     // First hardware sanity check: VERSIONR
     // ---------------------------------------------------------
 
     uint8_t version = 0;
-
+    // Offset Address for Chip version on Common Register = 0x0039
     auto status = ReadVersion(version);
 
     if (status != BareM_Status::OK)
         return status;
 
-    // W5500 VERSIONR reset value = 0x04
+    // W5500 VERSIONR must return value = 0x04
     if (version != 0x04)
         return BareM_Status::ERROR;
 

@@ -22,6 +22,7 @@ public:
    /* ---------- Initialization ---------- */
 
     static BareM_Status Init();
+    static void TestWriteDmaGap(uint16_t address, uint8_t block, uint8_t length);
 
 
   /* ---------- Network configuration ---------- */
