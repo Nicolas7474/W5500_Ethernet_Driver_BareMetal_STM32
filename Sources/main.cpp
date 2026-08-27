@@ -31,47 +31,24 @@ int main(void) {
       ;
   }
 
-  i = 0;
-  while (i < 1000) { i = i + 1; } // Delay
+  i = 0; while (i < 1000) { i = i + 1; } // Delay
   
-  if (W5500::Init() != BareM_Status::OK) {
-    GPIOE->ODR ^= (1U << 2); // PE2 bleu
-    for (;;)
-      ;
-  }
+  ASSERT_OK(W5500::Init() != BareM_Status::OK);
   // W5500 is alive.
 
-  i = 0;
-  while (i < 1000) { i = i + 1; } // Delay
+  i = 0; while (i < 1000) { i = i + 1; } // Delay
 
   const uint8_t mac[] = {0x02, 0x12, 0x34, 0x56, 0x78, 0x9A};
   const uint8_t ip[] = {192, 168, 137, 50};
   const uint8_t subnet[] = {255, 255, 255, 0};
   const uint8_t gateway[] = {192, 168, 137, 1};
 
-  if (W5500::SetMacAddress(mac) != BareM_Status::OK) {
-    GPIOE->ODR ^= (1U << 1);
-    for (;;)
-      ;
-  }
-  if (W5500::SetIPAddress(ip) != BareM_Status::OK) {
-    GPIOE->ODR ^= (1U << 1);
-    for (;;)
-      ;
-  }
-  if (W5500::SetSubnetMask(subnet) != BareM_Status::OK) {
-    GPIOE->ODR ^= (1U << 1);
-    for (;;)
-      ;
-  }
-  if (W5500::SetGateway(gateway) != BareM_Status::OK) {
-    GPIOE->ODR ^= (1U << 1);
-    for (;;)
-      ;
-  }
+  ASSERT_OK(W5500::SetMacAddress(mac) != BareM_Status::OK);
+  ASSERT_OK(W5500::SetIPAddress(ip) != BareM_Status::OK);
+  ASSERT_OK(W5500::SetSubnetMask(subnet) != BareM_Status::OK);
+  ASSERT_OK(W5500::SetGateway(gateway) != BareM_Status::OK);
 
-  i = 0;
-  while (i < 2000) { i = i + 1; } // Delay
+  i = 0; while (i < 2000) { i = i + 1; } // Delay
 
   // safety check - verify the network configuration registers
   uint8_t macRead[6]{}; // buffer to hold the network values
@@ -101,79 +78,51 @@ int main(void) {
       ;
   }
 
-  // Read PHYCFGR
-  uint8_t phyConfig = 0;
-  if (W5500::ReadPhyConfig(phyConfig) != BareM_Status::OK) {
-    // error
-  }
-
-  i = 0;
-  while (i < 2000) { i = i + 1; } // Delay  
+  i = 0; while (i < 2000) { i = i + 1; } // Delay  
 
   // Open UDP socket 0
-  auto status = W5500::SocketOpen(0, W5500::Protocol::UDP, 5000);
+  ASSERT_OK(W5500::SocketOpen(0, W5500::Protocol::UDP, 5000));
 
-  if (status != BareM_Status::OK) {   
-    for (;;);  // error
-  }
+  // Enable the RECV interrupt & enable Socket 0 in SIMR
+  ASSERT_OK(W5500::SocketSetInterruptMask(0, W5500_Reg::Sn_IR_Bits::RECV)); 
+  ASSERT_OK(W5500::SetSocketInterruptMask(0x01)); 
 
-  i = 0;
-  while (i < 2000) { i = i + 1; } // Delay
+  i = 0; while (i < 2000) { i = i + 1; } // Delay
 
   // Read the Socket Status Register after SocketOpen(). Expected: Sn_SR = 0x22
   uint8_t socketStatus = 0;
-  if (W5500::SocketGetStatus(0, socketStatus) != BareM_Status::OK) {
-    for (;;)
-      ;
-  }
+  ASSERT_OK(W5500::SocketGetStatus(0, socketStatus) != BareM_Status::OK);
 
-  i = 0;
-  while (i < 2000) { i = i + 1; } // Delay
+  i = 0; while (i < 2000) { i = i + 1; } // Delay
 
   // send an UDP packet: add the W5500 UDP destination registers first (Destination port Sn_DPORT0 / ip Sn_DIPR0)
   const uint8_t pcIp[] = { 192, 168, 137, 1 };
-  status = W5500::SocketSetDestination(0, std::span<const uint8_t, 4>(pcIp), 5000);
+  ASSERT_OK(W5500::SocketSetDestination(0, std::span<const uint8_t, 4>(pcIp), 5000));
 
-  if (status != BareM_Status::OK)
-  {
-      for (;;);
-  }
-
-  i = 0;
-  while (i < 2000) { i = i + 1; } // Delay
+  i = 0; while (i < 2000) { i = i + 1; } // Delay
 
   // Send packet
   const uint8_t message[] = "Hi ST";
-  status = W5500::SocketSend(0, std::span<const uint8_t>(message, sizeof(message) - 1)); 
-  if (status != BareM_Status::OK)
-    {
-        GPIOE->BSRR = (1U << 18);  // Blue lit
-        for (;;);
-    }
+  ASSERT_OK(W5500::SocketSend(0, std::span<const uint8_t>(message, sizeof(message) - 1))); 
 
-    i = 0;
-  while (i < 2000) { i = i + 1; } // Delay
+  i = 0; while (i < 2000) { i = i + 1; } // Delay
 
 // ---------------------------------------------------------
 // UDP SEND diagnostics
 // ---------------------------------------------------------
-// Read PHYCFGR
-  phyConfig = 0;
-  if (W5500::ReadPhyConfig(phyConfig) != BareM_Status::OK) {
-    // error
-  }
 
 
   // ----------- WHILE LOOP --------------
   for (;;) {
     // Toggle PE1 LED
-    GPIOE->ODR ^= (1U << 1);
+    //GPIOE->ODR ^= (1U << 1); // jaune
 
+   
     // Simple software delay loop
     i = 0;
     while (i < 8000000) {
       i = i + 1;
-    }
+    } 
   }
 }
 

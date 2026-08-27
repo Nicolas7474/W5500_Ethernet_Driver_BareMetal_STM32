@@ -472,7 +472,7 @@ BareM_Status W5500::Init()
     start = GetSysTick();
     while ((GetSysTick() - start) < 2800); // No SPI polling - BLOCKING        
    
-    uint8_t phyConfig = 0;  // Check the actual hardware state once
+    uint8_t phyConfig = 0;  // Read the bit LINK of PHYCFGR register
 
     if (ReadPhyConfig(phyConfig) != BareM_Status::OK)
         return BareM_Status::ERROR;
@@ -817,3 +817,26 @@ BareM_Status W5500::SocketReceive(uint8_t socket, std::span<uint8_t> data)
 
     return SocketCommand(socket, W5500_Reg::Sn_CR_Command::RECV);
 }
+
+
+
+BareM_Status W5500::SocketGetReceivedSize(uint8_t socket, uint16_t& size)
+{
+    if (!ValidSocket(socket))
+        return BareM_Status::ERROR;
+
+    return GetStableRxReceivedSize(socket, size);
+}
+
+ BareM_Status W5500::SocketSetInterruptMask(uint8_t socket, uint8_t mask)
+{
+    if (!ValidSocket(socket))
+        return BareM_Status::ERROR;
+
+    return SocketWrite8(socket, W5500_Reg::Sn_IMR, mask);
+}
+
+BareM_Status W5500::SetSocketInterruptMask(uint8_t mask)
+{
+    return Write8(W5500_Reg::SIMR, W5500_Reg::Block::COMMON, mask);
+} 

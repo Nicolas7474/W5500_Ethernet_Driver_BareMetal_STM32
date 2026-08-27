@@ -4,6 +4,8 @@
 #include <span>
 #include "spi.hpp"
 
+#define ASSERT_OK(expr) if (static_cast<BareM_Status>(expr) != BareM_Status::OK) { GPIOE->ODR ^= (1U << 2); for (;;); }
+
 /* This class uses a static-only design pattern (often used for hardware abstraction layers, drivers, or singletons)
 Because all member functions and variables are declared as static, you do not need to instantiate an object. 
 */
@@ -53,7 +55,7 @@ public:
     static BareM_Status SocketGetStatus(uint8_t socket, uint8_t& status);
     static BareM_Status GetSocketInterrupt(uint8_t socket, uint8_t& interrupt);
     static BareM_Status SocketGetTxFreeSize(    uint8_t socket,    uint16_t& size);
-    
+
     /* ---------- Socket ---------- */
 
     static BareM_Status SocketOpen(uint8_t socket, Protocol protocol, uint16_t port);
@@ -62,4 +64,9 @@ public:
     static BareM_Status SocketSetDestination(uint8_t socket, std::span<const uint8_t, 4> ip, uint16_t port);
     static BareM_Status SocketSend(uint8_t socket, std::span<const uint8_t> data);
     static BareM_Status SocketReceive(uint8_t socket, std::span<uint8_t> data);
+    static BareM_Status SocketGetReceivedSize(uint8_t socket, uint16_t& size);
+    static BareM_Status SocketSetInterruptMask(uint8_t socket, uint8_t mask);
+    static BareM_Status SetSocketInterruptMask(uint8_t mask); 
+
 };
+
