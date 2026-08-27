@@ -4,7 +4,9 @@
 #include <span>
 #include "spi.hpp"
 
-
+/* This class uses a static-only design pattern (often used for hardware abstraction layers, drivers, or singletons)
+Because all member functions and variables are declared as static, you do not need to instantiate an object. 
+*/
 class W5500
 {
 public:
@@ -24,13 +26,17 @@ public:
     static BareM_Status Init();
     static void TestWriteDmaGap(uint16_t address, uint8_t block, uint8_t length);
 
-
-  /* ---------- Network configuration ---------- */
+   /* ---------- Network configuration ---------- */
 
     static BareM_Status SetMacAddress(std::span<const uint8_t, 6> mac);
     static BareM_Status SetIPAddress(std::span<const uint8_t, 4> ip);
     static BareM_Status SetSubnetMask(std::span<const uint8_t, 4> mask);
     static BareM_Status SetGateway(std::span<const uint8_t, 4> gateway);
+
+    static BareM_Status GetMacAddress(std::span<uint8_t, 6> mac);
+    static BareM_Status GetIPAddress(std::span<uint8_t, 4> ip);
+    static BareM_Status GetSubnetMask(std::span<uint8_t, 4> mask);
+    static BareM_Status GetGateway(std::span<uint8_t, 4> gateway);
 
 
     /* ---------- Socket buffer configuration ---------- */
@@ -43,12 +49,14 @@ public:
     /* --------- Diagnostic ---------- */
 
     static BareM_Status ReadVersion(uint8_t& version);
-
+    static BareM_Status ReadPhyConfig(uint8_t& phyConfig);
+    static BareM_Status SocketGetStatus(uint8_t socket, uint8_t& status);
 
     /* ---------- Socket ---------- */
 
     static BareM_Status SocketOpen(uint8_t socket, Protocol protocol, uint16_t port);
     static BareM_Status SocketClose(uint8_t socket);
+    static BareM_Status SocketSetDestination(uint8_t socket, std::span<const uint8_t, 4> ip, uint16_t port);
     static BareM_Status SocketSend(uint8_t socket, std::span<const uint8_t> data);
     static BareM_Status SocketReceive(uint8_t socket, std::span<uint8_t> data);
 };

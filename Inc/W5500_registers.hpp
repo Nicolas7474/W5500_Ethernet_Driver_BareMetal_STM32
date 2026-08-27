@@ -167,8 +167,8 @@ namespace W5500_Reg
     constexpr uint16_t Sn_IR         = 0x0002; // Socket interrupt
     constexpr uint16_t Sn_SR         = 0x0003; // Socket status
 
-    constexpr uint16_t Sn_PORT0      = 0x0004; // Source port byte 0
-    constexpr uint16_t Sn_PORT1      = 0x0005; // Source port byte 1
+    constexpr uint16_t Sn_PORT0      = 0x0004; // Source port byte 0 (stores the MSB of the port)
+    constexpr uint16_t Sn_PORT1      = 0x0005; // Source port byte 1 (stores the LSB of the port)
 
     constexpr uint16_t Sn_DHAR0      = 0x0006; // Destination MAC byte 0
     constexpr uint16_t Sn_DHAR1      = 0x0007; // Destination MAC byte 1

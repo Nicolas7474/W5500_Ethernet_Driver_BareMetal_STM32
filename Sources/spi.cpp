@@ -139,15 +139,16 @@ BareM_Status SpiDriver::Transmit_MainBody(std::span<const uint8_t> txData, uint3
     m_state = SpiState::BUSY_TX;
 
     const uint8_t* txPtr = txData.data() + 1; // added +1 since the wrapper already sends txData[0]
-    uint32_t totalBytes  = txData.size() - 1;
+    const uint32_t txBytesRemaining = txData.size() - 1;
+    const uint32_t rxBytesTotal     = txData.size();
     uint32_t bytesSent   = 0;
     uint32_t bytesRead   = 0;
 
     // Hyper-fast pipelined loop (No nested blocking loops!)
-    while (bytesRead < totalBytes) {
+    while (bytesRead < rxBytesTotal) {
 
         // 1. Keep the Transmit Mailbox full whenever TXE is ready
-        if (bytesSent < totalBytes && (config.spi->SR & SPI_SR_TXE)) {
+        if (bytesSent < txBytesRemaining  && (config.spi->SR & SPI_SR_TXE)) {
             config.spi->DR = *txPtr++;
             bytesSent++;
         }
