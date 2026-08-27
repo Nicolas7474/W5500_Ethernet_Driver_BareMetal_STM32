@@ -142,6 +142,20 @@ void GPIO_Config(void)
 	GPIOA->PUPDR &= ~(3U << (10U * 2U));
 	// Initially low
 	GPIOA->BSRR = (1U << (10U + 16U));
+
+    // PA15 -> W5500 INT - Input with pull-up
+    GPIOA->MODER &= ~(3U << (15U * 2U));
+    // Pull-up: W5500 INT is active-low and open-drain/open-source
+    GPIOA->PUPDR &= ~(3U << (15U * 2U));
+    GPIOA->PUPDR |=  (1U << (15U * 2U));   // 01 = pull-up    
+    // Route EXTI15 to PA15  
+    RCC->APB2ENR |= RCC_APB2ENR_SYSCFGEN;   // Enable SYSCFG clock    
+    SYSCFG->EXTICR[3] &= ~(0xFU << 12U);    // EXTI15 is controlled by EXTICR[3], bits 12..15
+    // 0000 = PA15   
+    EXTI->IMR |= (1U << 15);      // Unmask EXTI15
+    EXTI->RTSR &= ~(1U << 15);    // Disable rising edge
+    EXTI->FTSR |=  (1U << 15);    // Enable falling edge
+    NVIC_EnableIRQ(EXTI15_10_IRQn); // Enable EXTI15_10 interrupt 
 }
 
 

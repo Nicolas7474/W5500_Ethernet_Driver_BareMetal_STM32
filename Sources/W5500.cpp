@@ -840,3 +840,12 @@ BareM_Status W5500::SetSocketInterruptMask(uint8_t mask)
 {
     return Write8(W5500_Reg::SIMR, W5500_Reg::Block::COMMON, mask);
 } 
+
+BareM_Status W5500::ClearSocketInterrupt(uint8_t socket, uint8_t mask)
+{
+    if (!ValidSocket(socket))
+        return BareM_Status::ERROR;
+
+    // Sn_IR is write-1-to-clear.
+    return SocketWrite8(socket, W5500_Reg::Sn_IR, mask);
+}

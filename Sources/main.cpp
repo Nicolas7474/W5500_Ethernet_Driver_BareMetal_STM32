@@ -9,6 +9,12 @@
 #include <array>
 #include <stdint.h>
 
+
+uint8_t rxBuffer[256]{};
+uint16_t receivedSize = 0;
+volatile bool w5500Interrupt = false;
+
+
 int main(void) {
   // MCU clock configuration
   SysClockConfig();
@@ -107,23 +113,48 @@ int main(void) {
 
   i = 0; while (i < 2000) { i = i + 1; } // Delay
 
-// ---------------------------------------------------------
-// UDP SEND diagnostics
-// ---------------------------------------------------------
-
 
   // ----------- WHILE LOOP --------------
-  for (;;) {
-    // Toggle PE1 LED
-    //GPIOE->ODR ^= (1U << 1); // jaune
+  for (;;) {   
 
-   
-    // Simple software delay loop
-    i = 0;
-    while (i < 8000000) {
-      i = i + 1;
-    } 
+    if (w5500Interrupt)
+    {
+      w5500Interrupt = false;
+      uint8_t socketIR = 0; // socketIR will contain the actual value of Socket 0's Sn_IR register
+
+      ASSERT_OK(W5500::GetSocketInterrupt(0, socketIR));
+      
+      if (socketIR & W5500_Reg::Sn_IR_Bits::RECV)
+      {
+        ASSERT_OK(W5500::SocketGetReceivedSize(0, receivedSize));        
+
+        if (receivedSize > sizeof(rxBuffer))
+        {
+            GPIOE->ODR ^= (1U << 2);
+            for (;;);
+        }
+
+        if (receivedSize > 0)        
+          ASSERT_OK(W5500::SocketReceive(0, std::span<uint8_t>(rxBuffer, receivedSize)));         
+
+        GPIOE->ODR ^= (1U << 1);
+        ASSERT_OK(W5500::ClearSocketInterrupt(0, W5500_Reg::Sn_IR_Bits::RECV));
+      }
+
+    }
+    
   }
+}
+
+
+extern "C" void EXTI15_10_IRQHandler(void)
+{
+    if (EXTI->PR & (1U << 15))
+    {    
+      EXTI->PR = (1U << 15);  // Clear EXTI15 pending flag  
+      // Defer W5500 SPI communication to the main loop.     
+      w5500Interrupt = true;
+    }
 }
 
 extern "C" void RTC_WKUP_IRQHandler(void) {
