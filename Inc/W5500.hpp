@@ -51,11 +51,14 @@ public:
     static BareM_Status ReadVersion(uint8_t& version);
     static BareM_Status ReadPhyConfig(uint8_t& phyConfig);
     static BareM_Status SocketGetStatus(uint8_t socket, uint8_t& status);
-
+    static BareM_Status GetSocketInterrupt(uint8_t socket, uint8_t& interrupt);
+    static BareM_Status SocketGetTxFreeSize(    uint8_t socket,    uint16_t& size);
+    
     /* ---------- Socket ---------- */
 
     static BareM_Status SocketOpen(uint8_t socket, Protocol protocol, uint16_t port);
     static BareM_Status SocketClose(uint8_t socket);
+    static BareM_Status SocketGetDestination(uint8_t socket, std::span<uint8_t, 4> ip, uint16_t& port);
     static BareM_Status SocketSetDestination(uint8_t socket, std::span<const uint8_t, 4> ip, uint16_t port);
     static BareM_Status SocketSend(uint8_t socket, std::span<const uint8_t> data);
     static BareM_Status SocketReceive(uint8_t socket, std::span<uint8_t> data);

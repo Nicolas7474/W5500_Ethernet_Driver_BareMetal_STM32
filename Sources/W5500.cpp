@@ -468,6 +468,18 @@ BareM_Status W5500::Init()
     if (version != 0x04)
         return BareM_Status::ERROR;
   
+    /* ----------- Wait for the PHY Link to be UP and perform check ------- */ 
+    start = GetSysTick();
+    while ((GetSysTick() - start) < 2800); // No SPI polling - BLOCKING        
+   
+    uint8_t phyConfig = 0;  // Check the actual hardware state once
+
+    if (ReadPhyConfig(phyConfig) != BareM_Status::OK)
+        return BareM_Status::ERROR;
+
+    if ((phyConfig & W5500_Reg::PHYCFGR_Bits::LNK) == 0)
+        return BareM_Status::TIMEOUT;
+
     /* ----------- Configure default 2 KB TX + 2 KB RX on every socket ---- */
     for (uint8_t socket = 0; socket < MAX_SOCKETS; ++socket) {
         status = ConfigureSocketBuffer(socket);
@@ -575,6 +587,26 @@ BareM_Status W5500::SocketGetStatus(uint8_t socket, uint8_t& status)
     return SocketRead8(socket, W5500_Reg::Sn_SR, status); 
 }
 
+BareM_Status W5500::GetSocketInterrupt(uint8_t socket, uint8_t& interrupt)
+{
+    if (!ValidSocket(socket))
+        return BareM_Status::ERROR;
+
+    return SocketRead8(socket, W5500_Reg::Sn_IR, interrupt);
+}
+
+////////////////////
+
+BareM_Status W5500::SocketGetTxFreeSize(
+    uint8_t socket,
+    uint16_t& size)
+{
+    if (!ValidSocket(socket))
+        return BareM_Status::ERROR;
+
+    return GetStableTxFreeSize(socket, size);
+}
+
 // ============================================================================
 // SOCKET OPEN
 // ============================================================================
@@ -610,6 +642,32 @@ BareM_Status W5500::SocketClose(uint8_t socket)
         return BareM_Status::ERROR;
 
     return SocketCommand(socket, W5500_Reg::Sn_CR_Command::CLOSE);
+}
+
+// ============================================================================
+// SOCKET GET DESTINATION
+// ============================================================================
+
+BareM_Status W5500::SocketGetDestination(
+    uint8_t socket,
+    std::span<uint8_t, 4> ip,
+    uint16_t& port)
+{
+    if (!ValidSocket(socket))
+        return BareM_Status::ERROR;
+
+    auto status = Read(
+        W5500_Reg::Sn_DIPR0,
+        W5500_Reg::SocketRegBlock(socket),
+        ip);
+
+    if (status != BareM_Status::OK)
+        return status;
+
+    return SocketRead16(
+        socket,
+        W5500_Reg::Sn_DPORT0,
+        port);
 }
 
 // ============================================================================

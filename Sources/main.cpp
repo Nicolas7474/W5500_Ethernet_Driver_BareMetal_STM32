@@ -101,9 +101,6 @@ int main(void) {
       ;
   }
 
-  i = 0;
-  while (i < 2000) { i = i + 1; } // Delay
-
   // Read PHYCFGR
   uint8_t phyConfig = 0;
   if (W5500::ReadPhyConfig(phyConfig) != BareM_Status::OK) {
@@ -148,9 +145,23 @@ int main(void) {
   // Send packet
   const uint8_t message[] = "Hi ST";
   status = W5500::SocketSend(0, std::span<const uint8_t>(message, sizeof(message) - 1)); 
+  if (status != BareM_Status::OK)
+    {
+        GPIOE->BSRR = (1U << 18);  // Blue lit
+        for (;;);
+    }
 
- 
+    i = 0;
+  while (i < 2000) { i = i + 1; } // Delay
 
+// ---------------------------------------------------------
+// UDP SEND diagnostics
+// ---------------------------------------------------------
+// Read PHYCFGR
+  phyConfig = 0;
+  if (W5500::ReadPhyConfig(phyConfig) != BareM_Status::OK) {
+    // error
+  }
 
 
   // ----------- WHILE LOOP --------------
