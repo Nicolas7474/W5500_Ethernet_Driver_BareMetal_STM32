@@ -68,6 +68,7 @@ public:
     static BareM_Status SocketSetInterruptMask(uint8_t socket, uint8_t mask);
     static BareM_Status SetSocketInterruptMask(uint8_t mask); 
     static BareM_Status ClearSocketInterrupt(uint8_t socket, uint8_t mask);
+    static BareM_Status ProcessUdpReceive(uint8_t socket);
 
 };
 

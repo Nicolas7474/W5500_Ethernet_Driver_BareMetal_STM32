@@ -4,8 +4,15 @@
 #include "W5500.hpp"
 #include "myConfig.h"
 
+#include <cstring>
 #include <algorithm>
 #include "W5500_registers.hpp"
+
+// W5500 RX ring buffer: create the storage and pointers
+constexpr uint16_t W5500_RX_RING_SIZE = 4096;
+alignas(4) static uint8_t rxRingBuffer[W5500_RX_RING_SIZE];
+static volatile uint16_t rxWritePtr = 0;
+static volatile uint16_t rxReadPtr  = 0;
 
 
 extern SpiDriver spi3;
@@ -848,4 +855,242 @@ BareM_Status W5500::ClearSocketInterrupt(uint8_t socket, uint8_t mask)
 
     // Sn_IR is write-1-to-clear.
     return SocketWrite8(socket, W5500_Reg::Sn_IR, mask);
+}
+
+
+// ============================================================================
+// CIRCULAR BUFFER
+// ============================================================================
+
+static inline uint16_t RxRingUsed()
+{
+    uint16_t w = rxWritePtr;
+    uint16_t r = rxReadPtr;
+
+    if (w >= r)
+        return w - r;
+
+    return W5500_RX_RING_SIZE - r + w;
+}
+
+
+static inline uint16_t RxRingFree()
+{
+    uint16_t w = rxWritePtr;
+    uint16_t r = rxReadPtr;
+
+    if (w == r)
+        return W5500_RX_RING_SIZE - 1;
+
+    if (w > r)
+        return W5500_RX_RING_SIZE - (w - r) - 1;
+
+    return (r - w) - 1;
+}
+
+BareM_Status W5500::ProcessUdpReceive(uint8_t socket)
+{
+    if (!ValidSocket(socket))
+        return BareM_Status::ERROR;
+
+    // ---------------------------------------------------------
+    // 1. How much data is currently in the W5500 RX buffer?
+    // ---------------------------------------------------------
+
+    uint16_t receivedSize;
+
+    auto status = GetStableRxReceivedSize(socket, receivedSize);
+
+    if (status != BareM_Status::OK)
+        return status;
+
+    if (receivedSize < 8)
+        return BareM_Status::ERROR;
+
+
+    // ---------------------------------------------------------
+    // 2. Read the 8-byte UDP packet header
+    //
+    // [0..3] = Destination IP
+    // [4..5] = Destination port
+    // [6..7] = UDP payload length
+    // ---------------------------------------------------------
+
+    uint16_t readPointer;
+
+    status = SocketRead16(socket, W5500_Reg::Sn_RX_RD0, readPointer);
+
+    if (status != BareM_Status::OK)
+        return status;
+
+    uint8_t header[8];
+
+    status = Read(
+        readPointer,
+        W5500_Reg::SocketRxBlock(socket),
+        std::span<uint8_t>(header, sizeof(header))
+    );
+
+    if (status != BareM_Status::OK)
+        return status;
+
+
+    // ---------------------------------------------------------
+    // 3. Extract UDP payload length
+    // ---------------------------------------------------------
+
+    uint16_t payloadLength =
+        static_cast<uint16_t>(
+            (static_cast<uint16_t>(header[6]) << 8) |
+             static_cast<uint16_t>(header[7])
+        );
+
+
+    // Sanity check - receivedSize includes the 8-byte UDP header.
+    if (payloadLength > (receivedSize - 8))
+        return BareM_Status::ERROR;
+
+    // Empty UDP datagram.
+    if (payloadLength == 0)
+    {
+        readPointer = static_cast<uint16_t>(readPointer + 8);
+
+        status = SocketWrite16(
+            socket,
+            W5500_Reg::Sn_RX_RD0,
+            readPointer
+        );
+
+        if (status != BareM_Status::OK)
+            return status;
+
+        // If you update Sn_RX_RD in memory but forget to issue SocketCommand(..., RECV), 
+        // the W5500 will assume you haven't consumed the data yet.
+        return SocketCommand(socket, W5500_Reg::Sn_CR_Command::RECV);
+    }
+
+
+    // ---------------------------------------------------------
+    // 4. Check our software ring buffer
+    // ---------------------------------------------------------
+
+    if (payloadLength > RxRingFree())
+    {
+        // The app has not consumed enough data, do not overwrite unread data.
+        return BareM_Status::ERROR;
+    }
+
+
+    // ---------------------------------------------------------
+    // 5. Read payload directly into the ring buffer
+    // ---------------------------------------------------------
+
+    uint16_t payloadPointer = static_cast<uint16_t>(readPointer + 8);
+
+    uint16_t w = rxWritePtr;
+
+    uint16_t firstPart = static_cast<uint16_t>(W5500_RX_RING_SIZE - w);
+
+    if (firstPart > payloadLength)
+        firstPart = payloadLength;
+
+    // First part before ring-buffer wrap.
+    status = Read(
+        payloadPointer,
+        W5500_Reg::SocketRxBlock(socket),
+        std::span<uint8_t>(&rxRingBuffer[w], firstPart)
+    );
+
+    if (status != BareM_Status::OK)
+        return status;
+
+    // Second part after ring-buffer wrap.
+    uint16_t remaining = static_cast<uint16_t>(payloadLength - firstPart);
+
+    if (remaining > 0)
+    {
+        status = Read(
+            static_cast<uint16_t>(payloadPointer + firstPart),
+            W5500_Reg::SocketRxBlock(socket),
+            std::span<uint8_t>(&rxRingBuffer[0], remaining)
+        );
+
+        if (status != BareM_Status::OK)
+            return status;
+    }
+
+
+    // ---------------------------------------------------------
+    // 6. Advance software ring write pointer
+    // ---------------------------------------------------------
+
+    uint16_t newWritePtr = static_cast<uint16_t>(w + payloadLength);
+
+    if (newWritePtr >= W5500_RX_RING_SIZE)
+        newWritePtr -= W5500_RX_RING_SIZE;
+
+    rxWritePtr = newWritePtr;
+
+
+    // ---------------------------------------------------------
+    // 7. Advance W5500 RX read pointer
+    //
+    // Header + payload have now been consumed.
+    // ---------------------------------------------------------
+
+    readPointer = static_cast<uint16_t>(readPointer + 8 + payloadLength);
+
+    status = SocketWrite16(
+        socket,
+        W5500_Reg::Sn_RX_RD0,
+        readPointer
+    );
+
+    if (status != BareM_Status::OK)
+        return status;
+
+
+    // ---------------------------------------------------------
+    // 8. Tell W5500 that the received packet was consumed.
+    // ---------------------------------------------------------
+
+    return SocketCommand(
+        socket,
+        W5500_Reg::Sn_CR_Command::RECV
+    );
+}
+
+
+static void RxRingWrite(const uint8_t* data, uint16_t len)
+{
+    if (len == 0) return;
+
+    // Safety: for UDP, if the application cannot consume quickly enough the data,
+    // dropping the next packet cleanly is preferable to corrupting the Rx buffer.
+    if (len > RxRingFree()) return;
+
+    uint16_t w = rxWritePtr;
+
+    // How much fits before the end of the ring buffer?
+    uint16_t firstPart = static_cast<uint16_t>(W5500_RX_RING_SIZE - w);
+
+    if (firstPart > len)
+        firstPart = len;
+
+    // First contiguous part.
+    memcpy(&rxRingBuffer[w], data, firstPart);
+
+    // Remaining part after wrapping to index 0.
+    uint16_t remaining = static_cast<uint16_t>(len - firstPart);
+
+    if (remaining > 0)
+        memcpy(&rxRingBuffer[0], data + firstPart, remaining); // or &data[firstPart]
+
+    // Advance write pointer.
+    uint16_t newWritePtr = static_cast<uint16_t>(w + len);
+
+    if (newWritePtr >= W5500_RX_RING_SIZE)
+        newWritePtr -= W5500_RX_RING_SIZE;
+
+    rxWritePtr = newWritePtr;
 }

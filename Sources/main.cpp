@@ -170,6 +170,14 @@ extern "C" void RTC_WKUP_IRQHandler(void) {
   EXTI->PR = (1U << 22);
 }
 
+
+
+
+
+
+
+
+
 /*
 F-RAM ATTEMPT TO READ / CHECK
 
