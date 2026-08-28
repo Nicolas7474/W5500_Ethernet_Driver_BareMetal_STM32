@@ -70,5 +70,9 @@ public:
     static BareM_Status ClearSocketInterrupt(uint8_t socket, uint8_t mask);
     static BareM_Status ProcessUdpReceive(uint8_t socket);
 
+    /* ---------- API Read / Write ---------- */
+    static uint16_t ReadRx(uint8_t* dest, uint16_t maxLen);
+    static BareM_Status ProcessInterrupt(uint8_t socket);
+
 };
 

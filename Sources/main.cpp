@@ -11,6 +11,7 @@
 
 
 uint8_t rxBuffer[256]{};
+uint8_t userBuffer[4096];
 uint16_t receivedSize = 0;
 volatile bool w5500Interrupt = false;
 
@@ -119,28 +120,17 @@ int main(void) {
 
     if (w5500Interrupt)
     {
-      w5500Interrupt = false;
-      uint8_t socketIR = 0; // socketIR will contain the actual value of Socket 0's Sn_IR register
+        w5500Interrupt = false;
 
-      ASSERT_OK(W5500::GetSocketInterrupt(0, socketIR));
-      
-      if (socketIR & W5500_Reg::Sn_IR_Bits::RECV)
-      {
-        ASSERT_OK(W5500::SocketGetReceivedSize(0, receivedSize));        
+        ASSERT_OK(W5500::ProcessInterrupt(0));
 
-        if (receivedSize > sizeof(rxBuffer))
+        uint16_t len_received = W5500::ReadRx(userBuffer, sizeof(userBuffer));
+
+        if (len_received > 0)
         {
-            GPIOE->ODR ^= (1U << 2);
-            for (;;);
+            // Application data is here.
+            // userBuffer[0 ... received-1]
         }
-
-        if (receivedSize > 0)        
-          ASSERT_OK(W5500::SocketReceive(0, std::span<uint8_t>(rxBuffer, receivedSize)));         
-
-        GPIOE->ODR ^= (1U << 1);
-        ASSERT_OK(W5500::ClearSocketInterrupt(0, W5500_Reg::Sn_IR_Bits::RECV));
-      }
-
     }
     
   }
