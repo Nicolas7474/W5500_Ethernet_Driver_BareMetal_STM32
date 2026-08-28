@@ -10,9 +10,7 @@
 #include <stdint.h>
 
 
-uint8_t rxBuffer[256]{};
 uint8_t userBuffer[4096];
-uint16_t receivedSize = 0;
 volatile bool w5500Interrupt = false;
 
 
