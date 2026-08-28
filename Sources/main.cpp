@@ -10,7 +10,7 @@
 #include <stdint.h>
 
 
-uint8_t userBuffer[4096];
+uint8_t userBuffer[1536]; // = 3x512 -> hold a UDP packet max size 1472 bytes
 volatile bool w5500Interrupt = false;
 
 

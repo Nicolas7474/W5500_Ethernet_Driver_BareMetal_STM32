@@ -765,7 +765,22 @@ BareM_Status W5500::SocketSend(uint8_t socket, std::span<const uint8_t> data)
 
 // ============================================================================
 // SOCKET RECEIVE
-// ============================================================================
+/*
+ * IMPORTANT — UDP payload size
+ * On a standard Ethernet network with an MTU of 1500 bytes, the maximum
+ * IPv4 UDP payload that fits into a single Ethernet frame is 1472 bytes:
+ *     1500 - 20 (IPv4 header) - 8 (UDP header) = 1472 bytes 
+ * UDP datagrams larger than 1472 bytes require IP fragmentation.
+ * Although the W5500 socket RX buffer may be configured to 8 KB, this
+ * does NOT mean that an 8-KB UDP datagram can be transmitted as one
+ * Ethernet packet, but it lets us accumulate multiple UDP datagrams without 
+ * forcing the application to process each one immediately.
+ * For reliable operation on a normal 1500-byte-MTU Ethernet network,
+ * keep individual UDP payloads <= 1472 bytes. 
+ * Larger application data should preferably be split into several UDP
+ * datagrams at the application/protocol level rather than relying on
+ * IP fragmentation.
+// ============================================================================*/
 
 BareM_Status W5500::SocketReceive(uint8_t socket, std::span<uint8_t> data)
 {
