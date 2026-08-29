@@ -603,7 +603,6 @@ BareM_Status W5500::GetSocketInterrupt(uint8_t socket, uint8_t& interrupt)
     return SocketRead8(socket, W5500_Reg::Sn_IR, interrupt);
 }
 
-////////////////////
 
 BareM_Status W5500::SocketGetTxFreeSize(
     uint8_t socket,
