@@ -707,6 +707,9 @@ BareM_Status W5500::SocketSend(uint8_t socket, std::span<const uint8_t> data)
     if (!ValidSocket(socket) || data.empty())
         return BareM_Status::ERROR;
 
+    // UDP datagrams are kept separate: wait for the previous SEND
+    // to complete before allowing the next one to be issued.
+
     // ---------------------------------------------------------
     // Sn_TX_FSR must be read until stable.
     // ---------------------------------------------------------
@@ -939,6 +942,7 @@ uint16_t W5500::ReadRx(uint8_t* dest, uint16_t maxLen)
         if (chunk > contiguous)
             chunk = contiguous;
 
+        // Copy only the contiguous portion; the next loop iteration handles wrap-around.
         memcpy(dest + total,
                &rxRing_Sock0[rxReadPtr_Sock0],
                chunk);
@@ -964,13 +968,16 @@ BareM_Status W5500::ProcessInterrupt(uint8_t socket)
         return status;
 
 
+    // Process only the socket interrupt sources enabled for this driver.
     if (socketIR & W5500_Reg::Sn_IR_Bits::RECV)
     {
+        // Move the UDP payload from W5500 RX memory into our software ring.
         status = ProcessUdpReceive(socket);
 
         if (status != BareM_Status::OK)
             return status;
 
+        // Clear RECV only after the datagram has been successfully consumed.
         status = ClearSocketInterrupt(
             socket,
             W5500_Reg::Sn_IR_Bits::RECV);
@@ -1162,6 +1169,9 @@ BareM_Status W5500::ProcessUdpReceive(uint8_t socket)
 
 BareM_Status W5500::WaitForSendComplete(uint8_t socket)
 {
+    // Helper function to wait for SENDOK, if we don't wait then multiple 
+    // SocketSend() sent in a raw will appear combined in a single UDP packet
+
     if (!ValidSocket(socket))
         return BareM_Status::ERROR;
 
@@ -1178,8 +1188,7 @@ BareM_Status W5500::WaitForSendComplete(uint8_t socket)
         if (status != BareM_Status::OK)
             return status;
 
-        // SEND completed successfully - if we don't wait for SENDOK, multiple
-        // SocketSend() sent in a raw will appear combined in a single UDP packet
+        // SEND completed successfully 
         if (socketIR & W5500_Reg::Sn_IR_Bits::SENDOK)
         {
             // Sn_IR is write-1-to-clear.
