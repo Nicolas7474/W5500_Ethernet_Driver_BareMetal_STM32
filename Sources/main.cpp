@@ -107,7 +107,9 @@ int main(void) {
   i = 0; while (i < 2000) { i = i + 1; } // Delay
 
   // Send packet
-  const uint8_t message[] = "Hi ST";
+  const uint8_t message[] = "START_a abu can copy and paste your text with ths and words into the_______END_______";
+  ASSERT_OK(W5500::SocketSend(0, std::span<const uint8_t>(message, sizeof(message) - 1))); 
+  ASSERT_OK(W5500::SocketSend(0, std::span<const uint8_t>(message, sizeof(message) - 1))); 
   ASSERT_OK(W5500::SocketSend(0, std::span<const uint8_t>(message, sizeof(message) - 1))); 
 
   i = 0; while (i < 2000) { i = i + 1; } // Delay
@@ -119,16 +121,15 @@ int main(void) {
     if (w5500Interrupt)
     {
         w5500Interrupt = false;
-
         ASSERT_OK(W5500::ProcessInterrupt(0));
+    }
 
-        uint16_t len_received = W5500::ReadRx(userBuffer, sizeof(userBuffer));
+    uint16_t len_received = W5500::ReadRx(userBuffer, sizeof(userBuffer));
 
-        if (len_received > 0)
-        {
-            // Application data is here.
-            // userBuffer[0 ... received-1]
-        }
+    if (len_received > 0)
+    {
+        // Application data is here.
+        // userBuffer[0 ... len_received-1]
     }
     
   }

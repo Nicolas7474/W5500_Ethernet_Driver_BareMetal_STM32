@@ -53,7 +53,7 @@ public:
     static BareM_Status ReadVersion(uint8_t& version);
     static BareM_Status ReadPhyConfig(uint8_t& phyConfig);
     static BareM_Status SocketGetStatus(uint8_t socket, uint8_t& status);
-    static BareM_Status GetSocketInterrupt(uint8_t socket, uint8_t& interrupt);
+    
     static BareM_Status SocketGetTxFreeSize(    uint8_t socket,    uint16_t& size);
 
     /* ---------- Socket ---------- */
@@ -66,13 +66,15 @@ public:
     static BareM_Status SocketReceive(uint8_t socket, std::span<uint8_t> data);
     static BareM_Status SocketGetReceivedSize(uint8_t socket, uint16_t& size);
     static BareM_Status SocketSetInterruptMask(uint8_t socket, uint8_t mask);
-    static BareM_Status SetSocketInterruptMask(uint8_t mask); 
+    static BareM_Status SetSocketInterruptMask(uint8_t mask);    
+    static BareM_Status GetSocketInterrupt(uint8_t socket, uint8_t& interrupt);
     static BareM_Status ClearSocketInterrupt(uint8_t socket, uint8_t mask);
-    static BareM_Status ProcessUdpReceive(uint8_t socket);
 
     /* ---------- API Read / Write ---------- */
+    static BareM_Status ProcessUdpReceive(uint8_t socket);
     static uint16_t ReadRx(uint8_t* dest, uint16_t maxLen);
     static BareM_Status ProcessInterrupt(uint8_t socket);
+    static BareM_Status WaitForSendComplete(uint8_t socket);
 
 };
 

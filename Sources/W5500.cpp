@@ -759,7 +759,12 @@ BareM_Status W5500::SocketSend(uint8_t socket, std::span<const uint8_t> data)
     // Tell W5500 to transmit the data.
     // ---------------------------------------------------------
 
-    return SocketCommand(socket, W5500_Reg::Sn_CR_Command::SEND);
+    status = SocketCommand(socket, W5500_Reg::Sn_CR_Command::SEND);
+
+    if (status != BareM_Status::OK)
+        return status;
+
+    return WaitForSendComplete(socket);
 }
 
 
@@ -1152,4 +1157,57 @@ BareM_Status W5500::ProcessUdpReceive(uint8_t socket)
     return SocketCommand(
         socket,
         W5500_Reg::Sn_CR_Command::RECV);
+}
+
+
+BareM_Status W5500::WaitForSendComplete(uint8_t socket)
+{
+    if (!ValidSocket(socket))
+        return BareM_Status::ERROR;
+
+    constexpr uint32_t SEND_TIMEOUT_MS = 100;
+
+    const uint32_t start = GetSysTick();
+
+    for (;;)
+    {
+        uint8_t socketIR = 0;
+
+        auto status = GetSocketInterrupt(socket, socketIR);
+
+        if (status != BareM_Status::OK)
+            return status;
+
+        // SEND completed successfully - if we don't wait for SENDOK, multiple
+        // SocketSend() sent in a raw will appear combined in a single UDP packet
+        if (socketIR & W5500_Reg::Sn_IR_Bits::SENDOK)
+        {
+            // Sn_IR is write-1-to-clear.
+            status = ClearSocketInterrupt(
+                socket,
+                W5500_Reg::Sn_IR_Bits::SENDOK);
+
+            if (status != BareM_Status::OK)
+                return status;
+
+            return BareM_Status::OK;
+        }
+
+        // Transmission timed out.
+        if (socketIR & W5500_Reg::Sn_IR_Bits::TIMEOUT)
+        {
+            // Clear the timeout interrupt before returning.
+            status = ClearSocketInterrupt(
+                socket,
+                W5500_Reg::Sn_IR_Bits::TIMEOUT);
+
+            if (status != BareM_Status::OK)
+                return status;
+
+            return BareM_Status::TIMEOUT;
+        }
+
+        if ((GetSysTick() - start) >= SEND_TIMEOUT_MS)
+            return BareM_Status::TIMEOUT;
+    }
 }
